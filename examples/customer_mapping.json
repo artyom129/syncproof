@@ -1,0 +1,18 @@
+{
+  "source_key": "customer_id",
+  "target_key": "id",
+  "mappings": [
+    {"source": "full_name", "target": "name", "rule": "text"},
+    {"source": "email", "target": "email_address", "rule": "email"},
+    {"source": "plan", "target": "tier", "rule": "exact"},
+    {"source": "mrr", "target": "monthly_revenue", "rule": "numeric_tolerance", "tolerance": 0.01},
+    {"source": "start_date", "target": "activated_at", "rule": "date", "tolerance": 0},
+    {"source": "country", "target": "country_code", "rule": "exact"}
+  ],
+  "fuzzy_fields": [
+    {"source": "full_name", "target": "name", "rule": "text"},
+    {"source": "email", "target": "email_address", "rule": "email"}
+  ],
+  "fuzzy_threshold": 86,
+  "ambiguity_delta": 2
+}

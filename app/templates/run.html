@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block title %}Run #{{ run.id }} · SyncProof{% endblock %}
+{% block content %}
+<section class="run-hero">
+  <div><a class="back" href="/">← Control room</a><div class="eyebrow">RUN #{{ run.id }}</div><h1>{{ run.name }}</h1><p>{{ run.source_name }} → {{ run.target_name }}</p></div>
+  <div class="quality"><span>QUALITY</span><strong>{{ run.summary.get('quality_score','—') }}</strong><small>/ 100</small></div>
+</section>
+<section class="metrics compact">
+  <article><span>Clean</span><strong>{{ run.summary.get('counts',{}).get('matched',0) + run.summary.get('counts',{}).get('fuzzy_matched',0) }}</strong></article>
+  <article><span>Changed</span><strong>{{ run.summary.get('counts',{}).get('changed',0) }}</strong></article>
+  <article><span>Source only</span><strong>{{ run.summary.get('counts',{}).get('source_only',0) }}</strong></article>
+  <article><span>Target only</span><strong>{{ run.summary.get('counts',{}).get('target_only',0) }}</strong></article>
+  <article><span>Changed fields</span><strong>{{ run.summary.get('changed_fields',0) }}</strong></article>
+</section>
+<section class="panel">
+  <div class="panel-head"><div><span class="eyebrow">EVIDENCE</span><h2>Record-level reconciliation</h2></div><div class="actions"><a href="/api/runs/{{ run.id }}/export.csv">Export CSV</a><a href="/api/runs/{{ run.id }}/patch-plan.json">Patch plan</a></div></div>
+  <div class="filters"><a href="/runs/{{ run.id }}">All</a>{% for s in ['matched','fuzzy_matched','changed','source_only','target_only','ambiguous'] %}<a href="/runs/{{ run.id }}?status={{ s }}">{{ s }}</a>{% endfor %}</div>
+  <div class="table-wrap"><table><thead><tr><th>Status</th><th>Source key</th><th>Target key</th><th>Score</th><th>Diffs</th></tr></thead><tbody>
+  {% for row in results %}
+  <tr><td><span class="badge {{ row.status }}">{{ row.status }}</span></td><td>{{ row.source_key or '—' }}</td><td>{{ row.target_key or '—' }}</td><td>{{ '%.1f'|format(row.match_score) }}</td><td>
+    {% if row.diffs %}<details><summary>{{ row.diffs|length }} field{{ 's' if row.diffs|length != 1 }}</summary><div class="diffs">{% for diff in row.diffs %}<div><strong>{{ diff.source_field }} → {{ diff.target_field }}</strong><span>{{ diff.source_value }} ⟶ {{ diff.target_value }}</span></div>{% endfor %}</div></details>{% else %}<span class="muted">No differences</span>{% endif %}
+  </td></tr>
+  {% endfor %}</tbody></table></div>
+</section>
+{% endblock %}

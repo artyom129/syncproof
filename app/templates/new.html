@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% block title %}New reconciliation · SyncProof{% endblock %}
+{% block content %}
+<section class="run-hero">
+  <div><a class="back" href="/">← Control room</a><div class="eyebrow">NEW RUN</div><h1>Build a migration acceptance check.</h1><p>Select two registered snapshots, let SyncProof suggest schema mappings, then review and run the contract.</p></div>
+</section>
+<section class="two-col">
+  <div class="panel">
+    <span class="eyebrow">1 · DATASETS</span><h2>Choose snapshots</h2>
+    <label>Source dataset</label>
+    <select id="source">{% for d in datasets %}<option value="{{ d.id }}">#{{ d.id }} · {{ d.name }} ({{ d.row_count }} rows)</option>{% endfor %}</select>
+    <label>Target dataset</label>
+    <select id="target">{% for d in datasets|reverse %}<option value="{{ d.id }}">#{{ d.id }} · {{ d.name }} ({{ d.row_count }} rows)</option>{% endfor %}</select>
+    <button id="suggest">Suggest mapping contract</button>
+    <p class="muted">Column suggestions use deterministic name similarity, schema metadata and uniqueness — no external service.</p>
+  </div>
+  <div class="panel">
+    <span class="eyebrow">2 · CONTRACT</span><h2>Review before execution</h2>
+    <label>Run name</label><input id="run-name" value="Migration acceptance check">
+    <label>Mapping JSON</label><textarea id="config" rows="22">{
+  "source_key": "",
+  "target_key": "",
+  "mappings": [],
+  "fuzzy_fields": [],
+  "fuzzy_threshold": 90,
+  "acceptance": {
+    "max_changed": 0,
+    "max_source_only": 0,
+    "max_target_only": 0,
+    "max_ambiguous": 0,
+    "min_quality_score": 100
+  }
+}</textarea>
+    <button class="primary" id="run">Execute reconciliation</button>
+    <div id="message" class="muted"></div>
+  </div>
+</section>
+<script>
+const $=id=>document.getElementById(id);
+$('suggest').onclick=async()=>{
+  $('message').textContent='Building mapping suggestion…';
+  const r=await fetch(`/api/mappings/suggest?source_dataset_id=${$('source').value}&target_dataset_id=${$('target').value}`);
+  const data=await r.json();
+  const cfg={source_key:data.source_key||'',target_key:data.target_key||'',mappings:data.mappings.map(x=>({source:x.source,target:x.target,rule:x.rule,tolerance:x.tolerance})),fuzzy_fields:[],fuzzy_threshold:90,acceptance:{max_changed:0,max_source_only:0,max_target_only:0,max_ambiguous:0,min_quality_score:100}};
+  $('config').value=JSON.stringify(cfg,null,2); $('message').textContent=`Suggested ${data.mappings.length} field mappings.`;
+};
+$('run').onclick=async()=>{
+  $('message').textContent='Running deterministic reconciliation…';
+  const body=new FormData(); body.append('name',$('run-name').value); body.append('source_dataset_id',$('source').value); body.append('target_dataset_id',$('target').value); body.append('config_json',$('config').value);
+  const r=await fetch('/api/runs/from-json',{method:'POST',body}); const data=await r.json();
+  if(!r.ok){$('message').textContent=data.detail||'Run failed';return;} window.location=data.url;
+};
+</script>
+{% endblock %}

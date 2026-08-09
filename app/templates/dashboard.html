@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% block title %}SyncProof · Control Room{% endblock %}
+{% block content %}
+<section class="hero">
+  <div>
+    <div class="eyebrow">DATA MIGRATION CONFIDENCE</div>
+    <h1>Prove that source and target data actually match.</h1>
+    <p>Profile datasets, map schemas, reconcile records, explain every mismatch and generate a machine-readable patch plan.</p>
+  </div>
+  <div class="hero-score">
+    <span>Control surface</span>
+    <strong>{{ stats.runs }}</strong>
+    <small>reconciliation runs</small>
+  </div>
+</section>
+
+<section class="metrics">
+  <article><span>Datasets</span><strong>{{ stats.datasets }}</strong><small>CSV · JSON · Excel</small></article>
+  <article><span>Runs</span><strong>{{ stats.runs }}</strong><small>auditable comparisons</small></article>
+  <article><span>Open findings</span><strong>{{ stats.issues }}</strong><small>changes + missing rows</small></article>
+</section>
+
+<section class="panel">
+  <div class="panel-head"><div><span class="eyebrow">RECENT RUNS</span><h2>Reconciliation history</h2></div><div class="actions"><a href="/new">+ New reconciliation</a></div></div>
+  {% if runs %}
+  <div class="run-grid">
+    {% for run in runs %}
+    <a class="run-card" href="/runs/{{ run.id }}">
+      <div class="run-top"><span>#{{ run.id }}</span><span class="badge {{ run.status }}">{{ run.status }}</span></div>
+      <h3>{{ run.name }}</h3>
+      <p>{{ run.source_name }} → {{ run.target_name }}</p>
+      <div class="score-line"><strong>{{ run.summary.get('quality_score','—') }}</strong><span>quality score</span></div>
+      <div class="mini-stats">
+        <span>{{ run.summary.get('counts',{}).get('matched',0) }} clean</span>
+        <span>{{ run.summary.get('counts',{}).get('changed',0) }} changed</span>
+        <span>{{ run.summary.get('counts',{}).get('source_only',0) }} missing</span>
+      </div>
+    </a>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="empty">Run <code>python scripts/seed_demo.py</code> to create a complete customer-migration demo.</div>
+  {% endif %}
+</section>
+
+<section class="two-col">
+  <div class="panel">
+    <span class="eyebrow">DATASETS</span><h2>Registered snapshots</h2>
+    <div class="list">
+    {% for dataset in datasets %}
+      <div class="list-row"><div><strong>{{ dataset.name }}</strong><small>{{ dataset.format|upper }}</small></div><div>{{ dataset.row_count }} × {{ dataset.column_count }}</div></div>
+    {% else %}<div class="empty">No datasets yet.</div>{% endfor %}
+    </div>
+  </div>
+  <div class="panel">
+    <span class="eyebrow">WHAT GETS PROVED</span><h2>Beyond row counts</h2>
+    <ul class="feature-list">
+      <li>Schema profile & null-rate drift</li><li>Exact + fuzzy identity matching</li><li>Field-level explainable diffs</li>
+      <li>Numeric & date tolerances</li><li>Missing / extra record detection</li><li>JSON patch-plan generation</li>
+    </ul>
+  </div>
+</section>
+{% endblock %}

@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>{% block title %}SyncProof{% endblock %}</title>
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="/"><span class="brand-mark">S</span><span>SyncProof</span></a>
+    <div class="tag">Migration Reconciliation Control Room</div>
+    <nav><a href="/docs">API</a><a href="/api/health">Health</a></nav>
+  </header>
+  <main class="shell">{% block content %}{% endblock %}</main>
+  <footer>Local-first · deterministic comparisons · explainable diffs</footer>
+</body>
+</html>

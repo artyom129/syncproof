@@ -1,0 +1,10 @@
+services:
+  syncproof:
+    build: .
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/app/data
+    environment:
+      SYNCPROOF_DB_PATH: /app/data/syncproof.db
+      SYNCPROOF_UPLOAD_DIR: /app/data/uploads
