@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
@@ -21,12 +22,37 @@ def _text(value: Any) -> str:
     return " ".join(str(value).strip().lower().split())
 
 
+def _display_key(value: Any) -> str | None:
+    """Key as it is stored in the dataset, so a patch plan can address the real row."""
+    if value is None:
+        return None
+    text = str(value).strip()
+    return text or None
+
+
+_NUMBER_NOISE = re.compile(r"[\s '$€£¥₽]")
+_THOUSANDS_COMMA = re.compile(r"^-?\d{1,3}(,\d{3})+$")
+
+
 def _number(value: Any) -> float | None:
+    """Parse 1234.5, 1,234.50, 1.234,50, 1 234,50 and $1,200 as numbers."""
     if value in (None, ""):
         return None
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)):
+        return float(value)
+    text = _NUMBER_NOISE.sub("", str(value))
+    if "," in text and "." in text:
+        if text.rfind(",") > text.rfind("."):
+            text = text.replace(".", "").replace(",", ".")
+        else:
+            text = text.replace(",", "")
+    elif "," in text:
+        text = text.replace(",", "") if _THOUSANDS_COMMA.match(text) else text.replace(",", ".")
     try:
-        return float(str(value).replace(",", ""))
-    except Exception:
+        return float(text)
+    except ValueError:
         return None
 
 
@@ -102,51 +128,79 @@ def reconcile(
     target_records: list[dict[str, Any]],
     config: ReconciliationConfig,
 ) -> ReconciliationResult:
-    target_by_key: dict[str, dict[str, Any]] = {}
+    # Index targets by normalized key. Rows without a key are never matched by key.
+    target_index: dict[str, int] = {}
     duplicate_target_keys: set[str] = set()
-    for row in target_records:
+    for index, row in enumerate(target_records):
         key = _text(row.get(config.target_key))
-        if key in target_by_key:
+        if not key:
+            continue
+        if key in target_index:
             duplicate_target_keys.add(key)
         else:
-            target_by_key[key] = row
+            target_index[key] = index
 
-    matched_target_ids: set[int] = set()
+    used_targets: set[int] = set()
+    # source index -> (target index, score, status)
+    assigned: dict[int, tuple[int, float, str]] = {}
+    ambiguous: dict[int, float] = {}
+    seen_source_keys: set[str] = set()
+    duplicate_source_keys: set[str] = set()
+
+    # Pass 1: exact key matches. They run before any fuzzy matching, so a fuzzy
+    # guess can never take a row that another source row owns by key.
+    for index, source in enumerate(source_records):
+        key = _text(source.get(config.source_key))
+        if not key:
+            continue
+        if key in seen_source_keys:
+            duplicate_source_keys.add(key)
+        seen_source_keys.add(key)
+        target_index_for_key = target_index.get(key)
+        if target_index_for_key is None or target_index_for_key in used_targets:
+            continue
+        used_targets.add(target_index_for_key)
+        assigned[index] = (target_index_for_key, 100.0, "matched")
+
+    # Pass 2: fuzzy matches for the rest, against targets nobody owns yet.
+    if config.fuzzy_fields:
+        for index, source in enumerate(source_records):
+            if index in assigned:
+                continue
+            candidates = sorted(
+                (
+                    (fuzzy_score(source, candidate, config.fuzzy_fields), target_idx)
+                    for target_idx, candidate in enumerate(target_records)
+                    if target_idx not in used_targets
+                ),
+                key=lambda item: item[0],
+                reverse=True,
+            )
+            if not candidates or candidates[0][0] < config.fuzzy_threshold:
+                continue
+            best_score, best_index = candidates[0]
+            second_score = candidates[1][0] if len(candidates) > 1 else -1
+            if second_score >= config.fuzzy_threshold and abs(best_score - second_score) <= config.ambiguity_delta:
+                ambiguous[index] = best_score
+                continue
+            used_targets.add(best_index)
+            assigned[index] = (best_index, best_score, "fuzzy_matched")
+
     output: list[dict[str, Any]] = []
-
-    for source in source_records:
-        source_key = _text(source.get(config.source_key))
-        target = target_by_key.get(source_key)
-        score = 100.0 if target is not None else 0.0
-        status = "matched"
-
-        if target is None and config.fuzzy_fields:
-            candidates = []
-            for candidate in target_records:
-                candidate_id = id(candidate)
-                if candidate_id in matched_target_ids:
-                    continue
-                candidates.append((fuzzy_score(source, candidate, config.fuzzy_fields), candidate))
-            candidates.sort(key=lambda item: item[0], reverse=True)
-            if candidates and candidates[0][0] >= config.fuzzy_threshold:
-                best_score, best = candidates[0]
-                second_score = candidates[1][0] if len(candidates) > 1 else -1
-                if second_score >= config.fuzzy_threshold and abs(best_score - second_score) <= config.ambiguity_delta:
-                    output.append({
-                        "source_key": source_key,
-                        "target_key": None,
-                        "status": "ambiguous",
-                        "match_score": round(best_score, 2),
-                        "diffs": [],
-                        "source": source,
-                        "target": None,
-                    })
-                    continue
-                target = best
-                score = best_score
-                status = "fuzzy_matched"
-
-        if target is None:
+    for index, source in enumerate(source_records):
+        source_key = _display_key(source.get(config.source_key))
+        if index in ambiguous:
+            output.append({
+                "source_key": source_key,
+                "target_key": None,
+                "status": "ambiguous",
+                "match_score": round(ambiguous[index], 2),
+                "diffs": [],
+                "source": source,
+                "target": None,
+            })
+            continue
+        if index not in assigned:
             output.append({
                 "source_key": source_key,
                 "target_key": None,
@@ -157,26 +211,24 @@ def reconcile(
                 "target": None,
             })
             continue
-
-        matched_target_ids.add(id(target))
-        target_key = _text(target.get(config.target_key))
+        target_idx, score, status = assigned[index]
+        target = target_records[target_idx]
         diffs = compare_rows(source, target, config.mappings)
-        final_status = "changed" if diffs else status
         output.append({
             "source_key": source_key,
-            "target_key": target_key,
-            "status": final_status,
+            "target_key": _display_key(target.get(config.target_key)),
+            "status": "changed" if diffs else status,
             "match_score": round(score, 2),
             "diffs": diffs,
             "source": source,
             "target": target,
         })
 
-    for target in target_records:
-        if id(target) not in matched_target_ids:
+    for target_idx, target in enumerate(target_records):
+        if target_idx not in used_targets:
             output.append({
                 "source_key": None,
-                "target_key": _text(target.get(config.target_key)),
+                "target_key": _display_key(target.get(config.target_key)),
                 "status": "target_only",
                 "match_score": 0.0,
                 "diffs": [],
@@ -214,6 +266,7 @@ def reconcile(
         "counts": counts,
         "changed_fields": changed_fields,
         "duplicate_target_keys": sorted(duplicate_target_keys),
+        "duplicate_source_keys": sorted(duplicate_source_keys),
         "quality_score": quality_score,
         "acceptance": {"passed": not reasons, "reasons": reasons},
     }

@@ -18,6 +18,21 @@ from .repository import Repository
 
 
 ALLOWED_SUFFIXES = {".csv", ".json", ".xlsx", ".xlsm"}
+_FORMULA_PREFIXES = ("=", "+", "-", "@", "\t", "\r")
+
+
+def _csv_safe(value: Any) -> Any:
+    """Keep spreadsheet apps from running a cell that starts like a formula."""
+    if isinstance(value, str) and value.startswith(_FORMULA_PREFIXES):
+        return "'" + value
+    return value
+
+
+def _check_columns(dataset: dict[str, Any], columns: list[str], side: str) -> None:
+    known = set(dataset["profile"].get("fields", {}))
+    missing = sorted({column for column in columns if column not in known})
+    if missing:
+        raise ValueError(f"Columns not found in {side} dataset '{dataset['name']}': {', '.join(missing)}")
 
 
 class SyncProofService:
@@ -49,15 +64,23 @@ class SyncProofService:
         target = settings.upload_dir / f"{uuid.uuid4().hex}{suffix}"
         with target.open("wb") as handle:
             shutil.copyfileobj(upload.file, handle)
-        dataset_id = self.ingest_local_file(target, name=name or Path(original_name).stem)
-        return dataset_id
+        try:
+            return self.ingest_local_file(target, name=name or Path(original_name).stem)
+        except Exception as exc:
+            # A file that cannot be parsed is not kept on disk.
+            target.unlink(missing_ok=True)
+            if isinstance(exc, ValueError):
+                raise
+            raise ValueError(f"Could not read {original_name}: {exc}") from exc
 
     def run(self, name: str, source_dataset_id: int, target_dataset_id: int, config: ReconciliationConfig) -> int:
         source = self.repository.get_dataset(source_dataset_id)
         target = self.repository.get_dataset(target_dataset_id)
         if source is None or target is None:
             raise ValueError("Dataset not found")
-        run_id = self.repository.create_run(name, source_dataset_id, target_dataset_id, config.model_dump())
+        _check_columns(source, [config.source_key, *(m.source for m in [*config.mappings, *config.fuzzy_fields])], "source")
+        _check_columns(target, [config.target_key, *(m.target for m in [*config.mappings, *config.fuzzy_fields])], "target")
+        run_id =self.repository.create_run(name, source_dataset_id, target_dataset_id, config.model_dump())
         try:
             source_records = load_records(Path(source["file_path"]))
             target_records = load_records(Path(target["file_path"]))
@@ -76,10 +99,10 @@ class SyncProofService:
         for row in results:
             writer.writerow({
                 "status": row["status"],
-                "source_key": row["source_key"],
-                "target_key": row["target_key"],
+                "source_key": _csv_safe(row["source_key"]),
+                "target_key": _csv_safe(row["target_key"]),
                 "match_score": row["match_score"],
-                "changed_fields": ", ".join(diff["target_field"] for diff in row["diffs"]),
+                "changed_fields": _csv_safe(", ".join(diff["target_field"] for diff in row["diffs"])),
             })
         return output.getvalue()
 
