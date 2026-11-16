@@ -1,25 +1,89 @@
 {% extends "base.html" %}
-{% block title %}Run #{{ run.id }} · SyncProof{% endblock %}
+{% from "_ui.html" import icon, outcome_bar, stamp, OUTCOMES %}
+{% set section = 'runs' %}
+{% set summary = run.summary %}
+{% set counts = summary.get('counts', {}) %}
+{% block title %}{{ run.name }} · SyncProof{% endblock %}
+
+{% macro value(v) -%}
+{%- if v is none or v == '' -%}<span class="blank">empty</span>{%- else -%}{{ v }}{%- endif -%}
+{%- endmacro %}
+
 {% block content %}
-<section class="run-hero">
-  <div><a class="back" href="/">← Control room</a><div class="eyebrow">RUN #{{ run.id }}</div><h1>{{ run.name }}</h1><p>{{ run.source_name }} → {{ run.target_name }}</p></div>
-  <div class="quality"><span>QUALITY</span><strong>{{ run.summary.get('quality_score','—') }}</strong><small>/ 100</small></div>
-</section>
-<section class="metrics compact">
-  <article><span>Clean</span><strong>{{ run.summary.get('counts',{}).get('matched',0) + run.summary.get('counts',{}).get('fuzzy_matched',0) }}</strong></article>
-  <article><span>Changed</span><strong>{{ run.summary.get('counts',{}).get('changed',0) }}</strong></article>
-  <article><span>Source only</span><strong>{{ run.summary.get('counts',{}).get('source_only',0) }}</strong></article>
-  <article><span>Target only</span><strong>{{ run.summary.get('counts',{}).get('target_only',0) }}</strong></article>
-  <article><span>Changed fields</span><strong>{{ run.summary.get('changed_fields',0) }}</strong></article>
-</section>
-<section class="panel">
-  <div class="panel-head"><div><span class="eyebrow">EVIDENCE</span><h2>Record-level reconciliation</h2></div><div class="actions"><a href="/api/runs/{{ run.id }}/export.csv">Export CSV</a><a href="/api/runs/{{ run.id }}/patch-plan.json">Patch plan</a></div></div>
-  <div class="filters"><a href="/runs/{{ run.id }}">All</a>{% for s in ['matched','fuzzy_matched','changed','source_only','target_only','ambiguous'] %}<a href="/runs/{{ run.id }}?status={{ s }}">{{ s }}</a>{% endfor %}</div>
-  <div class="table-wrap"><table><thead><tr><th>Status</th><th>Source key</th><th>Target key</th><th>Score</th><th>Diffs</th></tr></thead><tbody>
-  {% for row in results %}
-  <tr><td><span class="badge {{ row.status }}">{{ row.status }}</span></td><td>{{ row.source_key or '—' }}</td><td>{{ row.target_key or '—' }}</td><td>{{ '%.1f'|format(row.match_score) }}</td><td>
-    {% if row.diffs %}<details><summary>{{ row.diffs|length }} field{{ 's' if row.diffs|length != 1 }}</summary><div class="diffs">{% for diff in row.diffs %}<div><strong>{{ diff.source_field }} → {{ diff.target_field }}</strong><span>{{ diff.source_value }} ⟶ {{ diff.target_value }}</span></div>{% endfor %}</div></details>{% else %}<span class="muted">No differences</span>{% endif %}
-  </td></tr>
-  {% endfor %}</tbody></table></div>
-</section>
+<div class="page-head">
+  <div>
+    <a class="back" href="/">{{ icon('back') }}Runs</a>
+    <h1>{{ run.name }}</h1>
+    <p>{{ run.source_name }} → {{ run.target_name }}</p>
+    <div class="meta">Run {{ run.id }} · key {{ run.config.source_key }} → {{ run.config.target_key }} · {{ run.config.mappings | length }} mapped fields · {{ run.created_at[:16].replace('T', ' ') }}</div>
+  </div>
+  <div class="head-actions">
+    <a class="btn btn-secondary" href="/api/runs/{{ run.id }}/export.csv">{{ icon('download') }}CSV</a>
+    <a class="btn btn-secondary" href="/api/runs/{{ run.id }}/patch-plan.json">{{ icon('braces') }}Patch plan</a>
+  </div>
+</div>
+
+<div class="stack">
+  <section class="panel">
+    {% if run.status == 'failed' %}
+    <div class="verdict-line">{{ stamp(run) }}<p>{{ summary.get('error', 'The run stopped before it finished') }}</p></div>
+    {% else %}
+    <div class="verdict-panel">
+      <div>
+        <div class="verdict-line">{{ stamp(run) }}<p>{{ summary.source_rows }} source rows against {{ summary.target_rows }} target rows, {{ summary.changed_fields }} field differences</p></div>
+        {% if summary.acceptance and summary.acceptance.reasons %}
+        <ul class="reasons">{% for reason in summary.acceptance.reasons %}<li>{{ reason|capitalize }}</li>{% endfor %}</ul>
+        {% endif %}
+      </div>
+      <div class="quality"><div class="figure">{{ summary.quality_score }}<small>%</small></div><div class="label">Records that match cleanly</div></div>
+    </div>
+    <div style="margin-top: 20px">{{ outcome_bar(summary, tall=true) }}</div>
+    <div class="key">
+      {% for key, label in OUTCOMES %}{% if counts.get(key) %}<span><i class="o-{{ key }}"></i>{{ label }} <b>{{ counts[key] }}</b></span>{% endif %}{% endfor %}
+    </div>
+    {% if summary.get('duplicate_target_keys') or summary.get('duplicate_source_keys') %}
+    <div class="dupes">
+      {% if summary.get('duplicate_source_keys') %}Repeated keys in source: {% for k in summary.duplicate_source_keys %}<code>{{ k }}</code> {% endfor %}{% endif %}
+      {% if summary.get('duplicate_target_keys') %}Repeated keys in target: {% for k in summary.duplicate_target_keys %}<code>{{ k }}</code> {% endfor %}{% endif %}
+    </div>
+    {% endif %}
+    {% endif %}
+  </section>
+
+  <section class="panel">
+    <div class="panel-head"><h2>Records</h2><span class="aside">{{ results | length }} shown</span></div>
+    <nav class="tabs" aria-label="Filter records">
+      <a class="{{ 'active' if not status_filter }}" href="/runs/{{ run.id }}">All <b>{{ summary.get('results', 0) }}</b></a>
+      {% for key, label in OUTCOMES %}{% if counts.get(key) %}<a class="{{ 'active' if status_filter == key }}" href="/runs/{{ run.id }}?status={{ key }}"><i class="o-{{ key }}"></i>{{ label }} <b>{{ counts[key] }}</b></a>{% endif %}{% endfor %}
+    </nav>
+    <div class="ledger">
+      {% for row in results %}
+      {% set label = (OUTCOMES | selectattr(0, 'equalto', row.status) | first or (row.status, row.status))[1] %}
+      <div class="record">
+        <span class="outcome"><i class="o-{{ row.status }}"></i>{{ label }}</span>
+        <div>
+          <div class="keys">
+            {% if row.source_key %}<span>{{ row.source_key }}</span>{% else %}<span class="none">not in source</span>{% endif %}
+            <span class="arrow">→</span>
+            {% if row.target_key %}<span>{{ row.target_key }}</span>{% else %}<span class="none">not in target</span>{% endif %}
+            {% if row.status in ['fuzzy_matched', 'ambiguous'] %}<span class="score">name match {{ '%.0f'|format(row.match_score) }}%</span>{% endif %}
+          </div>
+          {% if row.diffs %}
+          <div class="fields">
+            <div class="h">Field</div><div class="h">Source</div><div class="h">Target</div>
+            {% for diff in row.diffs %}
+            <div class="name">{{ diff.source_field }}{% if diff.target_field != diff.source_field %}<small>→ {{ diff.target_field }} · {{ diff.rule }}</small>{% else %}<small>{{ diff.rule }}</small>{% endif %}</div>
+            <div class="was">{{ value(diff.source_value) }}</div>
+            <div class="now">{{ value(diff.target_value) }}</div>
+            {% endfor %}
+          </div>
+          {% endif %}
+        </div>
+      </div>
+      {% else %}
+      <div class="empty">No records with this outcome</div>
+      {% endfor %}
+    </div>
+  </section>
+</div>
 {% endblock %}

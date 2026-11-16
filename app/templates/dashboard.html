@@ -1,63 +1,65 @@
 {% extends "base.html" %}
-{% block title %}SyncProof · Control Room{% endblock %}
+{% from "_ui.html" import icon, outcome_bar, stamp %}
+{% set section = 'runs' %}
+{% block title %}Runs · SyncProof{% endblock %}
 {% block content %}
-<section class="hero">
+<div class="page-head">
   <div>
-    <div class="eyebrow">DATA MIGRATION CONFIDENCE</div>
-    <h1>Prove that source and target data actually match.</h1>
-    <p>Profile datasets, map schemas, reconcile records, explain every mismatch and generate a machine-readable patch plan.</p>
+    <h1>Reconciliation runs</h1>
+    <p>Compare a source and a target dataset row by row, see why each record differs and export a patch plan for the fixes</p>
   </div>
-  <div class="hero-score">
-    <span>Control surface</span>
-    <strong>{{ stats.runs }}</strong>
-    <small>reconciliation runs</small>
+  <a class="btn btn-primary" href="/new">{{ icon('plus') }}New check</a>
+</div>
+
+<div class="stack">
+  <div class="stats">
+    <div class="stat"><div class="label">Datasets</div><div class="figure">{{ stats.datasets }}</div><div class="note">CSV, JSON and Excel snapshots</div></div>
+    <div class="stat"><div class="label">Runs</div><div class="figure">{{ stats.runs }}</div><div class="note">Each one kept with its config</div></div>
+    <div class="stat"><div class="label">Open findings</div><div class="figure">{{ stats.issues }}</div><div class="note">Changed, missing, extra or ambiguous records</div></div>
   </div>
-</section>
 
-<section class="metrics">
-  <article><span>Datasets</span><strong>{{ stats.datasets }}</strong><small>CSV · JSON · Excel</small></article>
-  <article><span>Runs</span><strong>{{ stats.runs }}</strong><small>auditable comparisons</small></article>
-  <article><span>Open findings</span><strong>{{ stats.issues }}</strong><small>changes + missing rows</small></article>
-</section>
-
-<section class="panel">
-  <div class="panel-head"><div><span class="eyebrow">RECENT RUNS</span><h2>Reconciliation history</h2></div><div class="actions"><a href="/new">+ New reconciliation</a></div></div>
-  {% if runs %}
-  <div class="run-grid">
-    {% for run in runs %}
-    <a class="run-card" href="/runs/{{ run.id }}">
-      <div class="run-top"><span>#{{ run.id }}</span><span class="badge {{ run.status }}">{{ run.status }}</span></div>
-      <h3>{{ run.name }}</h3>
-      <p>{{ run.source_name }} → {{ run.target_name }}</p>
-      <div class="score-line"><strong>{{ run.summary.get('quality_score','—') }}</strong><span>quality score</span></div>
-      <div class="mini-stats">
-        <span>{{ run.summary.get('counts',{}).get('matched',0) }} clean</span>
-        <span>{{ run.summary.get('counts',{}).get('changed',0) }} changed</span>
-        <span>{{ run.summary.get('counts',{}).get('source_only',0) }} missing</span>
-      </div>
-    </a>
-    {% endfor %}
-  </div>
-  {% else %}
-  <div class="empty">Run <code>python scripts/seed_demo.py</code> to create a complete customer-migration demo.</div>
-  {% endif %}
-</section>
-
-<section class="two-col">
-  <div class="panel">
-    <span class="eyebrow">DATASETS</span><h2>Registered snapshots</h2>
-    <div class="list">
-    {% for dataset in datasets %}
-      <div class="list-row"><div><strong>{{ dataset.name }}</strong><small>{{ dataset.format|upper }}</small></div><div>{{ dataset.row_count }} × {{ dataset.column_count }}</div></div>
-    {% else %}<div class="empty">No datasets yet.</div>{% endfor %}
+  <section class="panel">
+    <div class="panel-head"><h2>Latest runs</h2><span class="aside">Bar shows how each run's records split</span></div>
+    {% if runs %}
+    <div class="runs">
+      {% for run in runs %}
+      <a class="run" href="/runs/{{ run.id }}">
+        <span>
+          <span class="title">{{ run.name }}</span>
+          <span class="sub">{{ run.source_name }} → {{ run.target_name }} · {{ run.created_at[:16].replace('T', ' ') }}</span>
+        </span>
+        {{ outcome_bar(run.summary) }}
+        <span class="score">{% if run.summary.get('quality_score') is not none %}{{ run.summary.quality_score }}<small>%</small>{% else %}—{% endif %}</span>
+        <span class="verdict">{{ stamp(run) }}</span>
+      </a>
+      {% endfor %}
     </div>
+    <div class="key">
+      <span><i class="o-matched"></i>Matched</span><span><i class="o-fuzzy_matched"></i>Matched by name</span><span><i class="o-changed"></i>Changed</span><span><i class="o-source_only"></i>Missing in target</span><span><i class="o-target_only"></i>Only in target</span><span><i class="o-ambiguous"></i>Ambiguous</span>
+    </div>
+    {% else %}
+    <div class="empty">No runs yet. Load the customer migration demo with <code>python scripts/seed_demo.py</code></div>
+    {% endif %}
+  </section>
+
+  <div class="grid-main">
+    <section class="panel">
+      <div class="panel-head"><h2>Datasets</h2><span class="aside">rows × columns</span></div>
+      {% for dataset in datasets %}
+      <div class="dataset">{{ icon('file') }}<span><span class="title">{{ dataset.name }}</span><span class="sub">{{ dataset.original_name }} · {{ dataset.format }}</span></span><span class="size">{{ dataset.row_count }} × {{ dataset.column_count }}</span></div>
+      {% else %}<div class="empty">No datasets yet. Upload one with <code>POST /api/datasets</code></div>{% endfor %}
+    </section>
+    <section class="panel">
+      <div class="panel-head"><h2>What a run checks</h2></div>
+      <ul class="checks">
+        <li>{{ icon('check') }}<span>Column profile: types, empty values, uniqueness</span></li>
+        <li>{{ icon('check') }}<span>Records matched by key, then by name or email when the key changed</span></li>
+        <li>{{ icon('check') }}<span>Each mapped field compared with its own rule</span></li>
+        <li>{{ icon('check') }}<span>Tolerances for amounts and dates</span></li>
+        <li>{{ icon('check') }}<span>Rows missing in the target and rows only in the target</span></li>
+        <li>{{ icon('check') }}<span>A JSON patch plan of inserts, updates and rows to review</span></li>
+      </ul>
+    </section>
   </div>
-  <div class="panel">
-    <span class="eyebrow">WHAT GETS PROVED</span><h2>Beyond row counts</h2>
-    <ul class="feature-list">
-      <li>Schema profile & null-rate drift</li><li>Exact + fuzzy identity matching</li><li>Field-level explainable diffs</li>
-      <li>Numeric & date tolerances</li><li>Missing / extra record detection</li><li>JSON patch-plan generation</li>
-    </ul>
-  </div>
-</section>
+</div>
 {% endblock %}

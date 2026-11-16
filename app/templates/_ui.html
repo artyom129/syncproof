@@ -1,0 +1,49 @@
+{# Shared pieces: lucide icons, the outcome bar and the verdict stamp #}
+{% set OUTCOMES = [
+  ('matched', 'Matched'),
+  ('fuzzy_matched', 'Matched by name'),
+  ('changed', 'Changed'),
+  ('source_only', 'Missing in target'),
+  ('target_only', 'Only in target'),
+  ('ambiguous', 'Ambiguous'),
+] %}
+
+{% macro icon(name) -%}
+<svg class="icon" viewBox="0 0 24 24" aria-hidden="true">
+{%- if name == 'runs' -%}<path d="M3 12h4l3 8 4-16 3 8h4"/>
+{%- elif name == 'plus' -%}<path d="M5 12h14"/><path d="M12 5v14"/>
+{%- elif name == 'api' -%}<path d="m18 16 4-4-4-4"/><path d="m6 8-4 4 4 4"/><path d="m14.5 4-5 16"/>
+{%- elif name == 'arrow' -%}<path d="M5 12h14"/><path d="m12 5 7 7-7 7"/>
+{%- elif name == 'back' -%}<path d="m12 19-7-7 7-7"/><path d="M19 12H5"/>
+{%- elif name == 'check' -%}<path d="M20 6 9 17l-5-5"/>
+{%- elif name == 'x' -%}<path d="M18 6 6 18"/><path d="m6 6 12 12"/>
+{%- elif name == 'file' -%}<path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/>
+{%- elif name == 'download' -%}<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/><path d="M12 15V3"/>
+{%- elif name == 'braces' -%}<path d="M8 3H7a2 2 0 0 0-2 2v5a2 2 0 0 1-2 2 2 2 0 0 1 2 2v5c0 1.1.9 2 2 2h1"/><path d="M16 21h1a2 2 0 0 0 2-2v-5c0-1.1.9-2 2-2a2 2 0 0 1-2-2V5a2 2 0 0 0-2-2h-1"/>
+{%- elif name == 'wand' -%}<path d="m21.64 3.64-1.28-1.28a1.21 1.21 0 0 0-1.72 0L2.36 18.64a1.21 1.21 0 0 0 0 1.72l1.28 1.28a1.2 1.2 0 0 0 1.72 0L21.64 5.36a1.2 1.2 0 0 0 0-1.72"/><path d="m14 7 3 3"/>
+{%- elif name == 'play' -%}<path d="M6 3l14 9-14 9V3z"/>
+{%- endif -%}
+</svg>
+{%- endmacro %}
+
+{% macro mark() -%}
+<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 5h5M3 10h5M3 15h5" stroke="#737373" stroke-width="1.5" stroke-linecap="round"/><path d="M12 10.5l2 2 4-5" stroke="#1f4fbf" stroke-width="1.75" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+{%- endmacro %}
+
+{% macro outcome_bar(summary, tall=false) -%}
+{% set counts = summary.get('counts', {}) %}
+{% set total = summary.get('results', 0) %}
+<div class="bar {{ 'tall' if tall }}" role="img" aria-label="{% for key, label in OUTCOMES %}{% if counts.get(key) %}{{ counts[key] }} {{ label|lower }}{{ ', ' }}{% endif %}{% endfor %}">
+{%- if total -%}
+  {%- for key, label in OUTCOMES -%}{%- if counts.get(key) -%}<span class="o-{{ key }}" style="flex: {{ counts[key] }}" title="{{ counts[key] }} {{ label|lower }}"></span>{%- endif -%}{%- endfor -%}
+{%- endif -%}
+</div>
+{%- endmacro %}
+
+{% macro stamp(run) -%}
+{% set acceptance = run.summary.get('acceptance') %}
+{% if run.status == 'failed' %}<span class="stamp failed">{{ icon('x') }}Failed</span>
+{% elif not acceptance %}<span class="stamp running">Running</span>
+{% elif acceptance.passed %}<span class="stamp accepted">{{ icon('check') }}Accepted</span>
+{% else %}<span class="stamp rejected">{{ icon('x') }}Rejected</span>{% endif %}
+{%- endmacro %}
