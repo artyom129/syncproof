@@ -1,0 +1,10 @@
+{
+  "source_rows": 1203,
+  "target_rows": 1187,
+  "changed": 65,
+  "fuzzy_matched": 40,
+  "source_only": 28,
+  "target_only": 12,
+  "duplicate_source_keys": 3,
+  "matched": 1070
+}

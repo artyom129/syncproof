@@ -9,7 +9,7 @@
 ![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)
 ![FastAPI](https://img.shields.io/badge/FastAPI-009688?logo=fastapi&logoColor=white)
 ![SQLite](https://img.shields.io/badge/SQLite-003B57?logo=sqlite&logoColor=white)
-![Tests](https://img.shields.io/badge/tests-23%20passed-2E8B57)
+![Tests](https://img.shields.io/badge/tests-27%20passed-2E8B57)
 ![License](https://img.shields.io/badge/license-MIT-lightgrey)
 
 </div>
@@ -76,7 +76,8 @@ flowchart LR
 python -m venv .venv
 source .venv/bin/activate        # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
-python scripts/seed_demo.py      # загружает две демо-миграции
+python scripts/seed_demo.py      # демо на 8 строк
+# python scripts/seed_demo.py --realistic   # 1 200 клиентов, см. ниже
 uvicorn app.main:app --reload
 ```
 
@@ -86,7 +87,22 @@ uvicorn app.main:app --reload
 | Документация API (OpenAPI) | `http://127.0.0.1:8000/docs` |
 | Health | `http://127.0.0.1:8000/api/health` |
 
-В демо есть намеренно неидеальная миграция CRM (отклонена: изменились тарифы и цены, одна запись пропала, одна лишняя) и справочник поставщиков, где у двух записей сменился ID (принят: обе найдены по имени).
+Маленькое демо это намеренно неидеальная миграция CRM: изменились тарифы и цены, одна запись пропала, одна лишняя. Вердикт **Rejected**.
+
+### Реалистичная миграция
+
+`--realistic` загружает 1 200 клиентов с теми повреждениями, которые оставляют настоящие миграции. Генератор детерминированный и записывает точное число каждого дефекта в `examples/realistic/expected.json`, поэтому тесты сверяют SyncProof с известной правдой.
+
+| Заложено в данные | Кол-во | SyncProof сообщает |
+|---|---|---|
+| Изменён тариф, цена или дата старта | 65 | `changed`, с полем и обоими значениями |
+| ID клиента переписан (`C-10042` стал `CUS-10042`) | 40 | `fuzzy_matched`, найдено по имени и email |
+| Нет в новой системе | 25 | `source_only` |
+| Повторяются в выгрузке старой системы | 3 | `source_only`, ключ в `duplicate_source_keys` |
+| Созданы после переключения | 12 | `target_only` |
+| Email в верхнем регистре, пробелы в именах, цены `1.290,00`, даты `ДД.ММ.ГГГГ` | много | ничего: это форматирование, а не различие |
+
+Пересоздать: `python scripts/generate_realistic.py --rows 1200 --seed 42`.
 
 Через Docker: `docker compose up --build`. Состояние хранится в `./data`.
 
@@ -181,8 +197,8 @@ app/
   services.py      загрузка, запуски, экспорт CSV, план исправлений
   templates/       интерфейс
   static/          стили
-examples/          источник, цель и контракт маппинга
-scripts/           загрузка демо
+examples/          малое демо и examples/realistic (1 200 клиентов)
+scripts/           загрузка демо, генератор реалистичных данных
 docs/              заметки об архитектуре и пример отчёта
 tests/             сопоставление, профилирование, API, страницы, крайние случаи
 ```
@@ -199,7 +215,7 @@ tests/             сопоставление, профилирование, API
 ## Тесты
 
 ```bash
-pytest -q        # 23 теста, без сети
+pytest -q        # 27 тестов, без сети
 ```
 
 GitHub Actions запускает набор при каждом пуше.

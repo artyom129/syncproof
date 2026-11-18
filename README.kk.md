@@ -9,7 +9,7 @@
 ![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)
 ![FastAPI](https://img.shields.io/badge/FastAPI-009688?logo=fastapi&logoColor=white)
 ![SQLite](https://img.shields.io/badge/SQLite-003B57?logo=sqlite&logoColor=white)
-![Tests](https://img.shields.io/badge/tests-23%20passed-2E8B57)
+![Tests](https://img.shields.io/badge/tests-27%20passed-2E8B57)
 ![License](https://img.shields.io/badge/license-MIT-lightgrey)
 
 </div>
@@ -76,7 +76,8 @@ flowchart LR
 python -m venv .venv
 source .venv/bin/activate        # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
-python scripts/seed_demo.py      # екі демо көшіруді жүктейді
+python scripts/seed_demo.py      # 8 жолдық демо
+# python scripts/seed_demo.py --realistic   # 1 200 клиент, төменде қараңыз
 uvicorn app.main:app --reload
 ```
 
@@ -86,7 +87,22 @@ uvicorn app.main:app --reload
 | API құжаттамасы (OpenAPI) | `http://127.0.0.1:8000/docs` |
 | Health | `http://127.0.0.1:8000/api/health` |
 
-Демода әдейі кемшілігі бар CRM көшіруі бар (қабылданбады: тарифтер мен бағалар өзгерген, бір жазба жоқ, бір артық) және екі жазбасының ID-і өзгерген жеткізушілер анықтамалығы (қабылданды: екеуі де атауы бойынша табылды).
+Шағын демо әдейі кемшілігі бар CRM көшіруі: тарифтер мен бағалар өзгерген, бір жазба жоқ, бір артық. Үкім **Rejected**.
+
+### Шынайы көшіру
+
+`--realistic` нағыз көшірулер қалдыратын ақаулары бар 1 200 клиентті жүктейді. Генератор детерминделген және әр ақаудың нақты санын `examples/realistic/expected.json` файлына жазады, сондықтан тесттер SyncProof-ты белгілі шындықпен салыстырады.
+
+| Деректерге салынған | Саны | SyncProof хабарлайды |
+|---|---|---|
+| Тариф, баға немесе бастау күні өзгерген | 65 | `changed`, өріспен және екі мәнмен |
+| Клиент ID-і қайта жазылған (`C-10042` болды `CUS-10042`) | 40 | `fuzzy_matched`, атауы мен email бойынша табылды |
+| Жаңа жүйеде жоқ | 25 | `source_only` |
+| Ескі жүйе жүктемесінде қайталанады | 3 | `source_only`, кілті `duplicate_source_keys` ішінде |
+| Ауыстырудан кейін жасалған | 12 | `target_only` |
+| Бас әріпті email, бос орынды аттар, `1.290,00` бағалар, `КК.АА.ЖЖЖЖ` күндер | көп | ештеңе: бұл пішімдеу, айырмашылық емес |
+
+Қайта жасау: `python scripts/generate_realistic.py --rows 1200 --seed 42`.
 
 Docker арқылы: `docker compose up --build`. Күй `./data` ішінде сақталады.
 
@@ -181,8 +197,8 @@ app/
   services.py      жүктеу, іске қосу, CSV экспорты, түзету жоспары
   templates/       интерфейс
   static/          стильдер
-examples/          бастапқы, мақсатты және маппинг келісімшарты
-scripts/           демо жүктеу
+examples/          шағын демо және examples/realistic (1 200 клиент)
+scripts/           демо жүктеу, шынайы деректер генераторы
 docs/              архитектура жазбалары және есеп үлгісі
 tests/             сәйкестендіру, профильдеу, API, беттер, шеткі жағдайлар
 ```
@@ -199,7 +215,7 @@ tests/             сәйкестендіру, профильдеу, API, бет
 ## Тесттер
 
 ```bash
-pytest -q        # 23 тест, желісіз
+pytest -q        # 27 тест, желісіз
 ```
 
 GitHub Actions әр push сайын тесттерді іске қосады.

@@ -9,7 +9,7 @@
 ![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)
 ![FastAPI](https://img.shields.io/badge/FastAPI-009688?logo=fastapi&logoColor=white)
 ![SQLite](https://img.shields.io/badge/SQLite-003B57?logo=sqlite&logoColor=white)
-![Tests](https://img.shields.io/badge/tests-23%20passed-2E8B57)
+![Tests](https://img.shields.io/badge/tests-27%20passed-2E8B57)
 ![License](https://img.shields.io/badge/license-MIT-lightgrey)
 
 </div>
@@ -76,7 +76,8 @@ Exact keys are claimed first. Fuzzy matching only works with rows nobody owns ye
 python -m venv .venv
 source .venv/bin/activate        # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
-python scripts/seed_demo.py      # loads two demo migrations
+python scripts/seed_demo.py      # the 8-row demo
+# python scripts/seed_demo.py --realistic   # 1,200 customers, see below
 uvicorn app.main:app --reload
 ```
 
@@ -86,7 +87,22 @@ uvicorn app.main:app --reload
 | API docs (OpenAPI) | `http://127.0.0.1:8000/docs` |
 | Health | `http://127.0.0.1:8000/api/health` |
 
-The demo ships with a deliberately imperfect CRM migration (rejected: changed plans and prices, one missing record, one extra) and a vendor master where two IDs changed (accepted: both found by name).
+The small demo is a deliberately imperfect CRM migration: changed plans and prices, one missing record, one extra, so the verdict is **Rejected**.
+
+### A realistic migration
+
+`--realistic` loads 1,200 customers with the damage real migrations leave behind. The generator is deterministic and writes the exact number of every defect to `examples/realistic/expected.json`, so the tests hold SyncProof to a known truth.
+
+| Planted in the data | Count | SyncProof reports |
+|---|---|---|
+| Plan, price or start date changed | 65 | `changed`, with the field and both values |
+| Customer ID rewritten (`C-10042` became `CUS-10042`) | 40 | `fuzzy_matched`, found by name and email |
+| Missing in the new system | 25 | `source_only` |
+| Repeated in the legacy export | 3 | `source_only`, listed in `duplicate_source_keys` |
+| Created after cut-over | 12 | `target_only` |
+| Upper-case emails, padded names, `1.290,00` prices, `DD.MM.YYYY` dates | many | nothing, this is formatting, not a difference |
+
+Regenerate with `python scripts/generate_realistic.py --rows 1200 --seed 42`.
 
 With Docker: `docker compose up --build`. State lives in `./data`.
 
@@ -181,8 +197,8 @@ app/
   services.py      ingestion, runs, CSV export, patch plan
   templates/       interface
   static/          styles
-examples/          source, target and a mapping contract
-scripts/           demo seeding
+examples/          small demo and examples/realistic (1,200 customers)
+scripts/           demo seeding, realistic data generator
 docs/              architecture notes and a sample report
 tests/             matching, profiling, API, pages, edge cases
 ```
@@ -199,7 +215,7 @@ tests/             matching, profiling, API, pages, edge cases
 ## Tests
 
 ```bash
-pytest -q        # 23 tests, no network
+pytest -q        # 27 tests, no network
 ```
 
 GitHub Actions runs the suite on every push.
